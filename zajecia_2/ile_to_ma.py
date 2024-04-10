@@ -5,8 +5,8 @@ text = input("Wpisz tekst: ")
 letters_and_punctuation = sum(c.isalpha() or c in string.punctuation for c in text) #litery i znaki
 
 spaces = text.count(' ') # spacje 
-words = len(text.split()) #wyrazy
-frequency = {} #czestotliwosc
+words = len(text.split()) # wyrazy
+frequency = {} # czestotliwosc
 for char in text.lower(): 
     if char.isalpha(): 
         if char in frequency:
