@@ -12,26 +12,26 @@ Gratulacje, jesteś super i wygrałeś! Słodkie kotki dla Ciebie!
      /⁻   ៸|     |、 ⁻〵
  乀 (ˍ, ل ل      じしˍ,)ノ
 """
-        return f"Wygrałeś! {user_choice} pokonuje {computer_choice}" + victory_message
+        return f"Wygrałeś! {user_choice} absolutnie dominuje {computer_choice}" + victory_message
     else:
-        return f"Przegrałeś! {computer_choice} pokonuje {user_choice}"
+        return f"Przegrałeś! {computer_choice} absolutnie dominuje {user_choice}"
 
 def get_computer_choice():
     return random.choice(["K", "P", "N"])
 
 def game():
-    print("Witaj w emocjonującejgrze Kamień, Papier, Nożyce!\n")
+    print("Witaj w emocjonującej grze w Kamień, Papier, Nożyce!\n")
     score = {"Wygrane": 0, "Przegrane": 0, "Remisy": 0}
     
     while True:
-        user_choice = input("Wybierz: K (Kamień), P (Papier), N (Nożyce) lub Q, aby zakończyć: ").upper()
+        user_choice = input("Wybierz: K (Kamień), P (Papier), N (Nożyce) lub Q, aby zakończyć grę: ").upper()
         
         if user_choice == "Q":
             print("\nDziękuję bardzo za grę ^^")
             break
         
         if user_choice not in ["K", "P", "N"]:
-            print("Niepoprawny wybór. Wybierz K, P, N lub Q.\n")
+            print("Twój wybór nie jest poprawny. Wybierz jedną odpowiedź z następujących: K, P, N lub Q.\n")
             continue
         
         computer_choice = get_computer_choice()
@@ -47,6 +47,6 @@ def game():
         else:
             score["Remisy"] += 1
         
-        print(f"Aktualny wynik - Wygrane: {score['Wygrane']}, Przegrane: {score['Przegrane']}, Remisy: {score['Remisy']}\n")
+        print(f"Wynik po ostatniej rundzie - Wygrane: {score['Wygrane']}, Przegrane: {score['Przegrane']}, Remisy: {score['Remisy']}\n")
 
 game()
