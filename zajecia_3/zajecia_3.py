@@ -1,1 +1,3 @@
-#tu bedzie kod z zajec 3
+#tu bedzie kod z zajec 
+
+#czy sie zaaktualizowalo
