@@ -1,6 +1,6 @@
 def generowanie_poziomej_piramidy():
     while True:
-        # Pobranie wysokości piramidy od użytkownika lub opcji zakończenia
+       
         dane_podstawowe = input("Napisz jaka wysoka ma być Twoja piramida lub jeśli masz dość piramid - wybierz 'q': ")
         if dane_podstawowe.lower() == 'q':
             print("Nie zostaniesz Tutanchamonem.")
