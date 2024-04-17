@@ -8,7 +8,7 @@ def generowanie_pionowej_piramidy():
         try:
             wysokosc = int(dane_podstawowe)
             if wysokosc <= 0:
-                raise ValueError("Wysokość piramidy nie może być ujemna.")
+                raise ValueError("Wysokość piramidy nie może być ujemna ani wynosić 0.")
         except ValueError as e:
             print("Błąd:", e)
             continue
