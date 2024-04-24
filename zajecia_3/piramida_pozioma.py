@@ -21,4 +21,3 @@ def generowanie_poziomej_piramidy():
             print('#' * i)
 
 generowanie_poziomej_piramidy()
-
