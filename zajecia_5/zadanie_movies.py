@@ -1,43 +1,52 @@
 import pandas as pd
 
-def load_movies_csv():
-    return pd.read_csv('movies.csv', sep=';', encoding="ISO-8859-1")
+def wczytaj_dane():
+    return pd.read_csv('movies.csv', sep=';', encoding='ISO-8859-1')
 
-def task1_movies_from_2000(df):
+def zadanie1():
+    df = wczytaj_dane()
     movies_2000 = df[df['Year'] == 2000]
-    print("Movies from the year 2000:")
+    print("Filmy z roku 2000:")
     print(movies_2000)
 
-def task2_average_movie_length_by_director(df):
-    average_lengths = df.groupby('Director')['Length'].mean()
-    print("Average movie length by director:")
-    print(average_lengths)
+def zadanie2():
+    df = wczytaj_dane()
+    df['Length'] = pd.to_numeric(df['Length'], errors='coerce')
+    average_length_by_director = df.groupby('Director')['Length'].mean()
+    print("Średnia długość filmów dla każdego reżysera:")
+    print(average_length_by_director)
 
-def task3_create_csv_with_selected_columns(df):
-    selected_columns = df[['Title', 'Director', 'Popularity']]
-    selected_columns.to_csv('selected_movie_data.csv', index=False)
-    print("CSV with selected columns created.")
+def zadanie3():
+    df = wczytaj_dane()
+    filtered_df = df[['Title', 'Director', 'Popularity']]
+    filtered_df.to_csv('filtered_movies.csv', index=False)
+    print("Utworzono plik 'filtered_movies.csv' z filtrami.")
 
-def task4_percentage_of_award_winning_movies(df):
+def zadanie4():
+    df = wczytaj_dane()
     total_movies = len(df)
-    award_movies = df['Awards'].sum()  # Assuming Awards column contains 1 for True and 0 for False
-    percentage = (award_movies / total_movies) * 100
-    print(f"Percentage of award-winning movies: {percentage:.2f}%")
+    award_movies = len(df[df['Awards'] == 'Yes'])
+    award_percentage = (award_movies / total_movies) * 100
+    print("Procentowy udział filmów z nagrodami:")
+    print(f"{award_percentage}%")
 
-def task5_movies_by_kubrick(df):
-    kubrick_movies = df[df['Director'] == 'Kubrick']
-    print("Movies by Kubrick:")
+def zadanie5():
+    df = wczytaj_dane()
+    kubrick_movies = df[df['Director'].str.contains("Kubrick, Stanley", case=False, na=False)]
+    print("Filmy reżyserowane przez Kubricka:")
     print(kubrick_movies)
 
-def task6_sum_popularity_of_comedy_movies(df):
-    comedy_movies = df[df['Subject'].str.lower() == 'comedy']
-    total_popularity = comedy_movies['Popularity'].sum()
-    print(f"Total popularity of comedy movies: {total_popularity}")
+def zadanie6():
+    df = wczytaj_dane()
+    df['Popularity'] = pd.to_numeric(df['Popularity'], errors='coerce')
+    comedy_popularity_sum = df[df['Subject'] == 'Comedy']['Popularity'].sum()
+    print("Suma popularności filmów komediowych:")
+    print(comedy_popularity_sum)
 
-df_movies = load_movies_csv()
-task1_movies_from_2000(df_movies)
-task2_average_movie_length_by_director(df_movies)
-task3_create_csv_with_selected_columns(df_movies)
-task4_percentage_of_award_winning_movies(df_movies)
-task5_movies_by_kubrick(df_movies)
-task6_sum_popularity_of_comedy_movies(df_movies)
+if __name__ == "__main__":
+    zadanie1()
+    zadanie2()
+    zadanie3()
+    zadanie4()
+    zadanie5()
+    zadanie6()
