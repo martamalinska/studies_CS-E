@@ -1,90 +1,73 @@
 import requests
-import json
 import pandas as pd
+import json
 import mplfinance as mpl
 
-def fetch_candle_data(url):
+def fetch_candles(url):
     response = requests.get(url)
     responseBody = response.text
     responseBodyJson = json.loads(responseBody)
-    return responseBodyJson["data"]
-
-def format_candle_data(candlesData):
+    candlesData = responseBodyJson["data"]
     formattedCandlesData = []
     for candle in candlesData:
-        formattedCandlesData.append({
+        formattedCandle = {
             'time': candle[0],
             'open': float(candle[1]),
             'close': float(candle[2]),
             'high': float(candle[3]),
             'low': float(candle[4])
-        })
+        }
+        formattedCandlesData.append(formattedCandle)
     return formattedCandlesData
 
-def prepare_dataframe(candlesData):
-    df = pd.json_normalize(candlesData)
+def find_candle_pattern(data, pattern_length):
+    target_pattern = data[-pattern_length:]
+
+    for i in range(len(data) - pattern_length):
+        current_slice = data[i:i+pattern_length]
+
+        if similar_pattern(target_pattern, current_slice):
+            return current_slice
+
+    return None
+
+def similar_pattern(pattern1, pattern2, tolerance=0.02):
+    for candle1, candle2 in zip(pattern1, pattern2):
+
+        if abs(candle1['open'] - candle2['open']) / candle1['open'] > tolerance:
+            return False
+        if abs(candle1['close'] - candle2['close']) / candle1['close'] > tolerance:
+            return False
+    return True
+
+url = 'https://www.mexc.com/open/api/v2/market/kline?symbol=SHINOBI_USDT&interval=60m&limit=10'
+candle_data = fetch_candles(url)
+
+pattern_length = 10
+matched_pattern = find_candle_pattern(candle_data[-1000:], pattern_length)
+
+if matched_pattern:
+    df = pd.DataFrame(candle_data)
     df['time'] = pd.to_datetime(df['time'], unit='s')
-    df = df.set_index('time')
-    return df
+    df = df.set_index("time")
 
-# Normalizacja danych
-def normalize_candles(candles):
-    norm_candles = []
-    for candle in candles:
-        open_price = float(candle['open'])
-        close_price = float(candle['close'])
-        if open_price != 0:
-            change = (close_price - open_price) / open_price
-        else:
-            change = 0
-        norm_candles.append(change)
-    return norm_candles
-
-# Znajdowanie dopasowania
-def find_match(pattern, data, threshold=0.01):
-    for i in range(len(data) - len(pattern)):
-        match = True
-        for j in range(len(pattern)):
-            if not (data[i+j] <= pattern[j] + threshold and data[i+j] >= pattern[j] - threshold):
-                match = False
-                break
-        if match:
-            return i
-    return -1
-
-# Pobieranie danych
-url = 'https://www.mexc.com/open/api/v2/market/kline?symbol=SHINOBI_USDT&interval=1m&limit=1000'
-candle_data = fetch_candle_data(url)
-formatted_candles = format_candle_data(candle_data)
-df = prepare_dataframe(formatted_candles)
-
-# Przygotowanie wzorca do porównania (ostatnie 10 świec)
-pattern = normalize_candles(formatted_candles[-10:])
-
-# Przygotowanie danych do przeszukiwania (pierwsze 990 świec)
-search_data = normalize_candles(formatted_candles[:-10])
-
-# Szukanie dopasowania
-match_index = find_match(pattern, search_data, threshold=0.01)
-
-# Sprawdzenie, czy znaleziono dopasowanie i wyświetlenie wyników
-if match_index != -1:
-    print(f"Znaleziono dopasowanie na indeksie: {match_index}")
-    matching_candles = formatted_candles[match_index:match_index+10]
-    df_matching = prepare_dataframe(matching_candles)
     mpl.plot(
         df[-10:],
-        type='candle',
-        title='Ostatnie 10 świec',
-        style='yahoo',
-        mav=(3, 6, 9)
+        type="candle",
+        title="Last 1000 candles matched by pattern",
+        style="yahoo",
+        mav=(3, 6, 9),
     )
+    df2 = pd.DataFrame(matched_pattern)
+    df2['time'] = pd.to_datetime(df2['time'], unit='s')
+    df2 = df2.set_index("time")
+
     mpl.plot(
-        df_matching,
-        type='candle',
-        title='Znalezione dopasowanie',
-        style='yahoo',
+        df2,
+        type="candle",
+        title="Matched Pattern",
+        style="yahoo",
         mav=(3, 6, 9)
     )
 else:
-    print("Nie znaleziono dopasowania.")
+    print("No pattern match found")
