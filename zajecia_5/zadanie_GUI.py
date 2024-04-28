@@ -12,7 +12,7 @@ def fetch_market_data():
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json()
-            # Wyświetlenie danych w konsoli
+
             print(data)
         else:
             messagebox.showerror("Błąd", f"Kod odpowiedzi HTTP: {response.status_code}")
@@ -31,7 +31,6 @@ root.title('MyGUIApp')
 canvas = tk.Canvas(root, height=800, width=600)
 canvas.pack()
 
-# Poniższa linijka powinna być odpowiednio zmodyfikowana do lokalizacji pliku 'altum.png' na Twoim komputerze
 background_image = PhotoImage(file='altum.png')
 background_label = Label(root, image=background_image)
 background_label.place(relwidth=1, relheight=1)
