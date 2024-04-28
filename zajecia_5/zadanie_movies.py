@@ -1,5 +1,6 @@
 import pandas as pd
 
+# Usunelam wiersz 2 dla latwiejszego rozwiazania
 def wczytaj_dane():
     return pd.read_csv('movies.csv', sep=';', encoding='ISO-8859-1')
 
