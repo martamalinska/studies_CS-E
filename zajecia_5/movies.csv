@@ -1,5 +1,4 @@
 Year;Length;Title;Subject;Actor;Actress;Director;Popularity;Awards;*Image
-INT;INT;STRING;CAT;CAT;CAT;CAT;INT;BOOL;STRING
 1990;111;Tie Me Up! Tie Me Down!;Comedy;Banderas, Antonio;Abril, Victoria;Almodóvar, Pedro;68;No;NicholasCage.png
 1991;113;High Heels;Comedy;Bosé, Miguel;Abril, Victoria;Almodóvar, Pedro;68;No;NicholasCage.png
 1983;104;Dead Zone, The;Horror;Walken, Christopher;Adams, Brooke;Cronenberg, David;79;No;NicholasCage.png
