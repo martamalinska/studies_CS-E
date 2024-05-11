@@ -26,14 +26,14 @@ Witaj w repozytorium przedmiotu Zaawansowane programowanie w Pythonie, który re
 ### Zajęcia 1
 Kody powtarzające podstawe zagadnienia w Pythonie, a także:
 1. Zgadnij liczbę 
-2. Pong - wyjorzystanie turtle
+2. Pong - wykorzystanie turtle
 3. Spider draw
 
 ### Zajęcia 2 
 1. LoveUEP
 2. Wyświetlanie największej i najmniejszej liczby
 3. Suma czy iloczyn
-4. Wyświetlanie ilości roznycb znaków w tekście
+4. Wyświetlanie ilości różnych znaków w tekście
 5. Bąbelki sortujące - malejąco i rosnąco
 6. Gra w kamień, papier, nożyce
 
