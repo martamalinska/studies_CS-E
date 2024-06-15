@@ -1,0 +1,539 @@
+---
+title: "ProjektStarbucks"
+output:
+  html_document: default
+  pdf_document: default
+date: "2024-06-09"
+---
+
+# Analiza zwrotów kapitałowych z akcji spółki Starbucks
+
+Projekt ma na celu przeprowadzenie analizy zwrotów kapitałowych z akcji spółki Starbucks w okresie 02.01.2016 do 23.05.2024. Analiza obejmować będzie:
+
+...
+
+Autorzy:
+
+- Marta Malińska
+- Nina Nowocień
+- Hubert Krajewski
+- Hubert Skierski
+
+## Załadaowanie bibliotek
+
+```{r}
+#install.packages("forecast")
+library(forecast)
+
+#install.packages("tseries")
+library(tseries)
+
+#install.packages("highfrequency")
+library(highfrequency)
+library(readr) # CSV file I/O, e.g. the read_csv function
+library(knitr)
+library(tidyverse)
+library(zoo)
+library(lubridate)
+library(dplyr)
+library(plotly)
+library(stlplus)
+library(quantmod)
+library(xts)
+library(timeSeries)
+library(tibble)
+library(ggplot2)
+library(TSstudio)
+library(quantmod)
+library(e1071)
+library(nortest)
+library(rugarch)
+```
+
+
+# Oczyszczenie danych i obliczenie stop zwrotu
+Pierwszym krokiem będzie przygotowanie danych. Analiza przeprowadzona zostanie dla okresu między 2016 a 2024 rokiem. W celu zagęszczenia ilości pomiarów w analizowanym szeregu, w dalszej analizie wykorzystane zostaną dane dzienne. Korzystając z pakietu xts, dane pobierane są bezpośrednio z internetu, bez potrzeby wcześniejszego wczytania danych z pliku csv lub xlsx. Spółki akcji oznaczone są na giełdzie symbolem "SBUX".
+
+## Pozyskanie danych bezpośrednio z giełdy
+```{r}
+stock.symbols <- c("SBUX") 
+
+stock.symbols.returned <- getSymbols(stock.symbols, from = "2016-01-01", to = "2024-06-08")
+
+stock.data <- get(stock.symbols.returned[1])
+chartSeries(stock.data, theme = "white", name = stock.symbols[1])
+
+# Add a trend line (50-period Simple Moving Average)
+addTA(SMA(Cl(stock.data), n = 50), on = 1, col = "blue", lwd = 1.5)
+```
+## Stworzenie zwrotów kapitałowych
+
+Zgodnie z powyższym wykresem, analizowane dane podlegać mogą pewnemu trendowi w czasie. Co więcej, cena akcji poddana jest niekorzystnemu działaniu inflacji, co nie zawsze jest realnym odzwierciedleniem wartości akcji. W celu zniwelowania niekorzystnego efektu wartości pieniądza w czasie oraz upewnianiu się, że analizowany szereg jest stacjonarny, do analizy wykorzystana zostanie stopu zwrotu z akcji, nie skorygowana cena zamknięcia.
+
+Na początek, zmieniony zostanie typ obiektu na data frame, w celu łatwiejszej pracy na wartościach i stworzenia osobnej kolumny, zawierającej daty. Row names natomiast zostaną zaindeksowane.
+Giełda nie operuje zarówno w weekendy jak i święta, a więc pozostawienie row names jako dat, tak jak ma to miejsce w obiekcie xts "stock data" doprowadziłoby do błędów przy określaniu ciągłości analizowanych danych.
+
+```{r}
+
+# Konwersja obiektu stock.data na data frame
+stock.data.df <- as.data.frame(stock.data)
+
+# Dodanie kolumny z datami
+stock.data.df$Date <- index(stock.data)
+stock.data.df$Date <- as.Date(stock.data.df$Date)
+```
+
+
+```{r}
+#stworz kolumne ze stopa zwrotu
+stock.data.df$SBUX.Returns <- Delt(Cl(stock.data), type = "log") * 100
+
+#zignorowanie pierwszego rowa
+stock.data.df <- na.omit(stock.data.df)
+ggplot(stock.data.df, aes(x = Date, y = SBUX.Returns)) +
+  geom_line() +
+  labs(title = "Stopy zwrotu z akcji SBUX w czasie",
+       x = "Data",
+       y = "Zwrot (%)") +
+  theme_minimal()
+head(stock.data.df)
+
+```
+Widoczny powyżej wykres stóp zwrotu na pierwszy rzut oka wykazuje stacjonarność, bez wyraźnego trendu. Warto zwrócic uwagę na strome spadki w wartości zwrotówn na początku roku 2020 i 2024. Miały wtedy miejsce akcje bojkotujące sieć kawiarni Starbucks.
+W następnym roku, przygotowany wczęsniej obiekt typu data.frame, charakteryzujący się typem danych "double":
+```{r}
+str(stock.data.df)
+```
+
+Przekształocny zostaje na wektor, następnie na obiekt typu "ts" (time series) wraz z określeniem cykliczności danych. Umożliwi to wykonanie dekompozycji STL oraz innych operacji bazujących na pakietach "forecast", "Tseries" oraz "timeSeries". Częstotliwość danych określona zostaje jako 365, ponieważ analizowane dane w przybliżeniu są danymi dziennymi.
+```{r}
+
+returns.vector <- as.numeric(stock.data.df$SBUX.Returns)
+freq <- 365
+ret.ts <- ts(returns.vector, frequency = freq)
+
+str(ret.ts)
+```
+# Analiza szeregu czasowego
+
+## Podstawowe statystyki opisowe
+
+Na początek poddane analizie zostaną podstawowe statystyki opisowe dla badanego szeregu.
+
+```{r}
+
+# Funkcja do obliczania podstawowych statystyk opisowych
+basic_stats <- function(time_series) {
+  mean_val <- mean(time_series)
+  median_val <- median(time_series)
+  variance_val <- var(time_series)
+  sd_val <- sd(time_series)
+  skewness_val <- e1071::skewness(time_series)
+  kurtosis_val <- e1071::kurtosis(time_series)
+  
+  return(data.frame(
+    Statistic = c("Średnia", "Mediana", "Wariancja", "Odchylenie Standardowe", "Skośność", "Kurtoza"),
+    Value = c(mean_val, median_val, variance_val, sd_val, skewness_val, kurtosis_val)
+  ))
+}
+
+# Wywołanie funkcji i przypisanie wyników
+stats <- basic_stats(ret.ts)
+
+# Pretty print wyników
+kable(stats, format = "markdown", col.names = c("Statistic", "Value"), caption = "Podstawowe Statystyki Opisowe")
+
+```
+
+Zgodnie z wynikami, średnia wartośc zwrotów wynosi około 1,58%, co oznacza, że przeciętny dzienny zwrot akcji jest dodatni.Mediana wynosi około 3.40%. Mediana jest wyższa niż średnia, co może sugerować, że rozkład zwrotów jest skośny, z kilkoma dużymi wartościami dodatnimi. Wariancja wynosi około 3.04. Wariancja mierzy, jak bardzo zwroty rozpraszają się wokół średniej. Wysoka wartość wariancji wskazuje na dużą zmienność zwrotów. Odchylenie standardowe wynosi około 1.74. Jest to miara dyspersji zwrotów wokół średniej. Wyższa wartość wskazuje na większą zmienność zwrotów. Wysokie wartości wariancji i odchylenia standardowego wskazują większe ryzyko podczas inwestycji. Skośność wynosi około -0.68. Negatywna wartość skośności wskazuje, że rozkład zwrotów jest asymetryczny i "ogon" rozkładu jest dłuższy po lewej stronie, co oznacza, że mogą występować ekstremalne negatywne zwroty częściej niż ekstremalne pozytywne zwroty. 
+Kurtoza natomiast wynosi około 16.56. Wartość kurtozy jest znacznie wyższa niż 3 (co jest wartością kurtozy dla rozkładu normalnego), co wskazuje na leptokurtyczny rozkład. To oznacza, że zwroty mają wiele ekstremalnych wartości (zarówno wysokich, jak i niskich), co wskazuje na potencjalne ryzyko dużych wahań.
+
+
+## Test normaności danych
+
+W celu sprawdzenia normalności danych, wykorzystany zostanie test Jarque-Bera, ze względu na znaczącą skośność i kurtoze analizowanego szeregu. W przeciwieństwo do testu Shapiro-Wilka, nadaje się on do większych zbiorów danych, oraz nie jest tak czuły na długie ogony rozkładu, tak jak ma to miejsce w teście Andersona-Darlinga, co nie jest pożądane w przypadku rozkładów z widocznymi ekstremalnymi odchyleniami.
+
+```{r}
+jb_test <- jarque.bera.test(ret.ts)
+print(jb_test)
+```
+Otrzymana wartość statystyki testowej (x kwadrat) mówi o wysokiej skośności i kurtozie badanego szeregu. p-value < 2.2e-16 wskazuje na bardzo niską wartość p-value, znacznie mniejsza od poziomu istotności. Należy więc odrzucic hipotezę zerową testy Jarque-Bera na rzecz hipotezy alternatywnej, mówiącej o braku normalności w rozkładzie.
+
+```{r}
+# Histogram i wykres gęstości
+hist(ret.ts, breaks = 50, main = "Histogram zwrotów", xlab = "Zwroty", probability = TRUE)
+lines(density(ret.ts), col = "blue", lwd = 2)
+
+# Wykres Q-Q
+qqnorm(ret.ts, main = "Q-Q plot zwrotów")
+qqline(ret.ts, col = "red", lwd = 2)
+```
+Przedstawiony powyżej wykres Q-Q pozwala na wizualną ocenę, jak dobrze analizowane dane pasują do rozkładu normalnego. Wykres porównuje kwantyle empiryczne danych do kwantyli teoretycznego rozkładu normalnego. Okręgi to konkretne wartości z szeregu czasowego, a prosta czerwona linia przedstawia idealne dopasowanie do rozkładu normalnego. Tak więc, jeśli dane są idealne, punkty będą leżeć wzdłóż tej linii.
+W przypadku szeregu czasowego zwrotów z akcji SBUX widoczne są ogony z lewej i prawej strony. Punkty w lewym dolnym rogu są znacznie poniżej linii, co wskazuje, że lewy ogon rozkładu zwrotów jest "grubszy" niż w przypadku rozkładu normalnego. Oznacza to, że występują tam bardziej ekstremalne wartości negatywne niż przewiduje rozkład normalny. Natomiast punkty w prawym górnym rogu są powyżej linii, co wskazuje, że prawy ogon rozkładu zwrotów jest również "grubszy" niż w przypadku rozkładu normalnego. Oznacza to, że występują tam bardziej ekstremalne wartości pozytywne niż przewiduje rozkład normalny. Zwroty położone bliżej środkowej częsci linii leżą w jej najbliższym sąsiedztwie, co oznacza, że zwroty w tej częsci rozkładu są w przybliżeniu normalne.
+
+
+## Test ADF
+
+W celu potwierdzenia hipotezy o stacjonarności analiozowanego szeregu, przeprowadzony zostanie Test Dickeya - Fullera, którego hipoteza zerowa mówi o niestacjonarności badanego szeregu. Warto zaznaczyć, że im bardziej oddalną od zera w zwrocie ujemnym liczbą jest wynik testu ADF, tym silniejsza stacjonarność badanego szeregu.
+
+```{r}
+adf_test_returns <- adf.test(stock.data.df$SBUX.Returns)
+
+#pretty print z knitr
+# Create a function to format ADF test results
+pretty_print_adf <- function(adf_result) {
+  result <- data.frame(
+    Statistic = adf_result$statistic,
+    `P-Value` = adf_result$p.value,
+    `Lags Used` = adf_result$parameter,
+    `Hipoteza Alternatywna` = adf_result$alternative
+  )
+  kable(result, format = "markdown", caption = "ADF Test Result")
+}
+
+# Pretty print the results
+cat("ADF Test dla Stopy Zwrotów")
+pretty_print_adf(adf_test_returns)
+```
+
+Zgodnie z otrzymanymi wynikami, statystyka równa jest w przybliżeniu -13.281 przy p-value mniejszym od 0,01, co wskazuje na wybór hipotezy alternatywnej H1, potwierdzającej stacjonarność badanego szeregu zwrotów kapitałowych z akcji SBUX. Dzięki temu nie ma potrzeby sotsowania przekształcenia Boxa-Coxa, czy dalszego sprowadzania szeregu do postaci stacjonarnej (bo już takową posiada).
+
+## Dekompozycja STL
+
+W celu lepszego zrozumienia badanego szeregu, w następnym kroku przperowadzona zostaje dekompozycja STL (Seasonal-Trend decomposition using Loess). Dekompozycja STL ma na celu rozbicie szeregu czasowego na jego trzy główne komponenty: trend, sezonowość oraz reszty (szum).
+
+
+```{r}
+stl_decomp <- stl(ret.ts, t.window = 13, s.window = "periodic", robust = TRUE)
+autoplot(stl_decomp) + ggtitle("STL Decomposition of SBUX Daily Returns")
+```
+Analizując wyniki wykonanej dekompozycji, zauważyć można brak wyraźnego trendu czy sezonowości w analizowanym szeregu. Nie mniej jednak, bojkot spółki starbucks z marca 2020 ma swoje odzwierciedlenie w badanym szeregu w postaci wyraźnego wzrostu udziału danych resztkowych (okolice 4 na osi odciętych). Widoczna na tym samym wykresie, oraz na wykresie Data, pioniowa linia w dół z końcówki badanego okresu (okolice wartości 6,8 na osi odciętych) to natomiast widoczne niezadowolenie inwestorów po opublikowaniu rocznego raportu finansowego spółki, fiaska na rynku chińskim oraz obniżenia prognoz sprzedaży.
+
+# Modele prognoz
+
+## Przygotowanie setu treningowego i testowego
+
+Przygotowanie modeli prognostycznych rozpocząć należy od stworzenia zbiorów testowego i treningowego. Jak sama nazwa wskazuje, zadaniem zbioru treningowego jest dostosowanie parametrów danego modelu, a zbioru testowego sprawdzenie, czy model odpowiednio oddaje rzeczywistość, w celu dokładniejszego prognozowania. Przyjęło się, że szereg pierwotny standardowo rozdzielany jest w proprocjach 80:20, gdzie 80% stanowi zbiór treningowy, a 20% zbiór testowy. Takie też proprocje zastosowane są w tym przypadku.
+
+```{r}
+# Okreslenie dlugosci calosci szeregy
+total.length <- length(ret.ts)
+
+# frekwencja
+freq <- 365
+
+# Wyznacz 20% z całości jako dane badawcze
+test.length <- ceiling(0.2 * total.length)
+
+# Wyznacz długość setu treningowego
+train.length <- total.length - test.length
+
+# Wyznacz koniec setu treningowego
+train.end.row <- (train.length - 1) %/% freq + 1
+train.end.col <- (train.length - 1) %% freq + 1
+
+# stworz nowe time series
+training.ts <- window(ret.ts, end = c(train.end.row, train.end.col))
+testing.ts <- window(ret.ts, start = c(train.end.row, train.end.col + 1))
+
+# double check dlugosci nowych time seriesow
+length(training.ts)
+length(testing.ts)
+
+
+cat("End of training period:", time(training.ts)[length(training.ts)], "\n")
+cat("Start of testing period:", time(testing.ts)[1], "\n")
+
+head(training.ts)
+head(testing.ts)
+```
+
+
+
+# Analiza ARIMA
+
+
+ARIMA (AutoRegressive Integrated Moving Average) to popularna metoda modelowania szeregów czasowych. Ponieważ Twoje dane są stacjonarne (nie wymaga integracji), możesz skupić się na modelu ARMA (AutoRegressive Moving Average).
+
+## Wyznaczneie ACF oraz PACF
+
+Proces zacznie się od użycia wykresów ACF (Autocorrelation Function) i PACF (Partial Autocorrelation Function) do identyfikacji parametrów p (liczba autoregresyjnych opóźnień) i q (liczba opóźnień średniej ruchomej). Wykres ACF, jak sama nazwa wskazuje, odpowiada za wskazanie autokorelacji między wartościami szeregu czasowego a i ich opóźnieniami (lagami). PACF natomiast, podobnie jak ACF informuje o zależności między zmuiennymi szeregu i ich opóźnieniami, lecz eliminuje wpływ pośrednich zależności przez inne lagi. W obu przypadkach, przerywane niebieskie linie reprezentują granice istotności, zazwyczaj na poziomie 95%. Oznacza to więc, że w idealnie dopasowanym modelu nie pojawi się lag, który którąkolwiek z granic by przekroczył. Wykresy ACF i PACF wyznaczane są na podstawie zbioru treningowego "training.ts".
+
+```{r}
+
+# Wykres ACF
+acf(training.ts, main = "Autokorelacja (ACF) dla zbioru treningowego")
+
+# Wykres PACF
+pacf(training.ts, main = "Częściowa autokorelacja (PACF) dla zbioru treningowego")
+
+```
+
+Na wykresie ACF dla analizowanego zbioru już na pierwszy rzut oka widoczna jest skrajnie wysoka wartość dla pierwszego laga (bliska 1). Oznacza to, że istnieje silna autokorelacja między bieżącymi wartościami szeregu czasowego, a wartościami z poprzedniego okresu. Wartości autokorelacji dla dalszych lagów szybko spadają do zera i większość z nich znajduje się w granicach istotności (przerywane linie). Sugeruje to, że poza pierwszym lagiem nie ma istotnej autokorelacji w danych.
+
+Wartość PACF dla pierwszego laga jest ujemna i przekracza granicę istotności. Oznacza to, że istnieje bezpośrednia, istotna korelacja między bieżącymi wartościami szeregu czasowego a wartościami z poprzedniego okresu, niezależnie od innych lagów. Wartości PACF dla lagów 2 i dalszych są w większości w granicach istotności, co sugeruje, że poza pierwszym lagiem nie ma istotnych bezpośrednich zależności w danych. Istnieją jednak pewne pojedyncze lagi, które wykazują niewielkie, istotne wartości, ale są one bliskie granicy istotności i mogą nie być istotne w praktyce. Nie mniej jednak, warto będzie sprawdzić, czy przy odpowienim tuningu modelu uda się zminimalizować obecność również tych lagów
+
+
+## Forecast do sprawdzenia modelu
+
+Prognoze rozpoczynamy od zastosowania modelu (1,0,1), który w większości przypadków dobrze sprawdza się przy eliminowaniu lagów zarówno dla ACF jak i PACF.
+
+```{r}
+# Definiowanie i dopasowanie modelu ARIMA na danych treningowych
+arima_model <- arima(training.ts, order = c(1, 0, 1))
+
+# Wyświetlenie wyników modelu ARIMA
+summary(arima_model)
+```
+
+
+```{r}
+# Prognozowanie na danych testowych
+forecasts <- forecast(arima_model, h = length(testing.ts))
+
+```
+
+```{r}
+# Wizualizacja prognoz i rzeczywistych wartości
+plot(forecasts)
+lines(testing.ts, col = "brown")
+```
+
+```{r}
+# Ocena prognoz na zbiorze testowym
+accuracy(forecasts, testing.ts)
+```
+
+
+## Dekompozycja STL i prognoza ARIMA (co innego co po prostu ARIMA, dlatego wykres sie rozni!!!)
+
+```{r}
+
+forecasted.return <- stlf(training.ts, s.window = "period", method = "arima", h = test.length)
+
+# Plot the forecast
+plot(forecasted.return, main = "Forecasts of NWN from STL and ARIMA (w/o month data)")
+```
+
+
+## Porownanie danych dla STL+ARIMA
+
+```{r}
+accuracy(forecasted.return, testing.ts)
+```
+
+
+
+
+
+```{r}
+res <- residuals(forecasted.return)
+plot(res, main="Residuals W/O Month Data and no Tuning")
+```
+
+## Sprawdzenie autokorealcji:
+
+```{r}
+# Check the correlation of the residuals
+Acf(res, main="Autocorrelation W/O Month Data and no Tuning")
+
+```
+```{r}
+mean(res)
+```
+## Tuning the model
+
+```{r}
+forecasted.return <- stlf(training.ts, s.window = "period", method="arima", h=test.length, lambda = 1, robust = TRUE, biasadj = TRUE)
+plot(forecasted.return, main="Forecasts of NWN from tuned STL and ARIMA (w/o month data)")
+```
+
+```{r}
+accuracy(forecasted.return, testing.ts)
+# Plot the residuals
+res <- residuals(forecasted.return)
+
+# Check the correlation of the residuals
+Acf(res, main="Autocorrelation W/O Month Data and with Tuning")
+
+```
+
+```{r}
+mean(res)
+```
+
+
+
+```{r}
+fit_ar1 <- arima(training.ts, order = c(6, 0, 4))
+checkresiduals(fit_ar1)
+```
+
+WNIOSKI !!!
+
+# Analiza STL
+
+
+```{r}
+# Fit the ETS model on the training set
+ets_model <- ets(training.ts)
+
+# Generate forecasts using the ETS model
+ets_forecast <- forecast(ets_model, h = length(test.length))
+
+# Plot the original data with forecasted values
+plot(ets_forecast, main = "ETS Model on Returns Dataset")
+lines(testing.ts, col = "red")
+legend("topright", legend = c("Forecasted Values", "Actual Values"), 
+       col = c("red", "blue"), lty = 1)
+
+# Print evaluation metrics
+ets_evaluation <- accuracy(ets_forecast, testing.ts)
+print(ets_evaluation)
+```
+
+# Analiza GARCH
+
+```{r}
+garch_model <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+                          mean.model = list(armaOrder = c(1,0)),
+                          distribution.model = "std")
+garch_fit <- ugarchfit(spec = garch_model, data = training.ts)
+
+# Prognozowanie z modelu GARCH
+garch_forecast <- ugarchforecast(garch_fit, n.ahead = length(testing.ts))
+
+# Wizualizacja prognoz GARCH
+garch_forecast_mean <- as.numeric(fitted(garch_forecast))
+plot(testing.ts, type = "l", col = "blue", main = "Prognozy z modelu GARCH vs Rzeczywiste wartości", ylab = "Zwroty")
+lines(garch_forecast_mean, col = "red")
+legend("topright", legend = c("Rzeczywiste wartości", "Prognozy GARCH"), col = c("blue", "red"), lty = 1)
+
+# Sprawdzenie reszt z modelu GARCH
+residuals_garch <- residuals(garch_fit)
+acf(residuals_garch, main="ACF reszt z modelu GARCH")
+pacf(residuals_garch, main="PACF reszt z modelu GARCH")
+qqnorm(residuals_garch, main="QQ wykres reszt z modelu GARCH")
+qqline(residuals_garch, col="red")
+
+# Test Jarque-Bera dla reszt
+jb_test_residuals <- jarque.bera.test(residuals_garch)
+print(jb_test_residuals)
+
+# Histogram reszt
+hist(residuals_garch, breaks=50, main="Histogram reszt z modelu GARCH", xlab="Reszty", probability=TRUE)
+lines(density(residuals_garch), col="blue", lwd=2)
+```
+
+(Kurde zobaczcie sobie na te wykresy, średnio mi sie ten GARCH podoba, chyba tego nie rozumiem do końca. Nie wiem czy go opisywać, czy zrezygnować, a może komuś wyjdzie?)
+
+# Wygładzanie wykładnicze ETS
+
+W tej części poddany analizie został model wygładzania wykładniczego (ETS) dopasowany do szeregów czasowych zwrotów akcji Starbucks. Model ETS jest często stosowany do prognozowania danych szeregów czasowych, ponieważ dobrze radzi sobie z modelowaniem trendów i sezonowości.
+
+```{r}
+library(forecast)
+
+# Dopasowanie modelu ETS do zbioru treningowego
+ets_model <- ets(training.ts)
+
+# Wyświetlenie szczegółów modelu ETS
+summary(ets_model)
+
+# Prognozowanie na zbiorze testowym
+ets_forecast <- forecast(ets_model, h = length(testing.ts))
+
+# Wizualizacja prognoz ETS i rzeczywistych wartości
+plot(ets_forecast, main = "Prognozy modelu ETS vs Rzeczywiste wartości", xlab = "Czas", ylab = "Zwroty")
+lines(testing.ts, col = "red", lwd = 2)
+legend("topright", legend = c("Prognozy ETS", "Rzeczywiste wartości"), col = c("blue", "red"), lty = 1, lwd = 2)
+
+# Ocena dokładności prognoz
+accuracy_ets <- accuracy(ets_forecast, testing.ts)
+print(accuracy_ets)
+```
+Na wykresie przedstawiono prognozy modelu ETS (niebieska linia) oraz rzeczywiste wartości (czerwona linia) dla zbioru testowego. Niebieska linia reprezentuje prognozy zwrotów akcji Starbucks generowane przez model ETS. Prognozy są stosunkowo stabilne i nie wykazują dużych wahań, co jest zgodne z charakterystyką modelu ETS(A,N,N).Czerwona linia reprezentuje rzeczywiste zwroty akcji Starbucks w zbiorze testowym. Wartości te wykazują większą zmienność i większe odchylenia w porównaniu do prognoz modelu ETS.
+
+Model ETS(A,N,N) okazał się skuteczny w prognozowaniu zwrotów akcji Starbucks, choć z pewnymi ograniczeniami. Model dobrze radzi sobie z ogólnym poziomem danych, jednak nie jest w stanie w pełni uchwycić nagłych i ekstremalnych zmian w zwrotach. Mimo to, uzyskane wyniki wskazują na stabilność i skuteczność modelu w przewidywaniu średnich zwrotów akcji, co może być użyteczne dla inwestorów i analityków finansowych.
+
+# Średnie ruchome
+
+Na wykresie przedstawiono ceny zamknięcia akcji Starbucks wraz z prostymi średnimi ruchomymi (SMA) oraz wykładniczymi średnimi ruchomymi (EMA) dla okresów 50 i 200 dni.
+
+```{r}
+library(TTR)
+library(ggplot2)
+
+# Obliczenie prostych średnich ruchomych (SMA)
+stock.data.df$SMA_50 <- SMA(stock.data.df$SBUX.Close, n = 50)
+stock.data.df$SMA_200 <- SMA(stock.data.df$SBUX.Close, n = 200)
+
+# Obliczenie wykładniczych średnich ruchomych (EMA)
+stock.data.df$EMA_50 <- EMA(stock.data.df$SBUX.Close, n = 50)
+stock.data.df$EMA_200 <- EMA(stock.data.df$SBUX.Close, n = 200)
+
+# Usunięcie wierszy z brakującymi wartościami
+stock.data.df <- na.omit(stock.data.df)
+
+# Wizualizacja SMA i EMA
+ggplot(stock.data.df, aes(x = Date)) +
+  geom_line(aes(y = SBUX.Close), color = "black") +
+  geom_line(aes(y = SMA_50), color = "blue", linewidth = 1) +
+  geom_line(aes(y = SMA_200), color = "red", linewidth = 1) +
+  geom_line(aes(y = EMA_50), color = "green", linewidth = 1) +
+  geom_line(aes(y = EMA_200), color = "purple", linewidth = 1) +
+  labs(title = "SMA i EMA dla akcji Starbucks",
+       x = "Data",
+       y = "Cena zamknięcia") +
+  theme_minimal() +
+  scale_color_manual(values = c("black", "blue", "red", "green", "purple"),
+                     labels = c("Cena zamknięcia", "SMA 50", "SMA 200", "EMA 50", "EMA 200")) +
+  theme(legend.title = element_blank())
+
+```
+
+- Czarna linia: Cena zamknięcia akcji Starbucks.
+- Niebieska linia: 50-dniowa SMA.
+- Czerwona linia: 200-dniowa SMA.
+- Zielona linia: 50-dniowa EMA.
+- Fioletowa linia: 200-dniowa EMA
+
+SMA 50 i SMA 200 służą do wygładzania danych i identyfikacji długoterminowych trendów.
+SMA 50 jest bardziej wrażliwa na krótkoterminowe zmiany cen, natomiast SMA 200 reaguje wolniej i lepiej oddaje długoterminowe trendy.
+Na wykresie widać, że SMA 50 szybko reaguje na zmiany cen, podczas gdy SMA 200 pozostaje bardziej stabilna.
+EMA 50 i EMA 200 nadają większą wagę nowszym danym, co sprawia, że są bardziej wrażliwe na zmiany niż SMA.
+EMA 50 pokazuje szybsze reakcje na zmiany cen w porównaniu do SMA 50, co jest widoczne na wykresie.
+EMA 200 również reaguje szybciej na zmiany niż SMA 200, jednak jest bardziej stabilna w porównaniu do EMA 50.
+
+Przecięcia między krótkoterminowymi i długoterminowymi średnimi ruchomymi mogą sygnalizować zmiany trendów.
+Na przykład, przecięcie SMA 50 powyżej SMA 200 może wskazywać na początek trendu wzrostowego (sygnał kupna), podczas gdy przecięcie poniżej może wskazywać na początek trendu spadkowego (sygnał sprzedaży).
+Podobnie, przecięcia EMA 50 i EMA 200 mogą dostarczać sygnałów zmiany trendów.
+
+Średnie ruchome, zarówno proste (SMA), jak i wykładnicze (EMA), są skutecznymi narzędziami do identyfikacji trendów cen akcji Starbucks. EMA reagują szybciej na zmiany cen, co czyni je bardziej odpowiednimi do krótkoterminowych analiz, podczas gdy SMA są bardziej stabilne i lepiej nadają się do długoterminowych analiz. Przecięcia średnich ruchomych dostarczają ważnych sygnałów zmiany trendów, które mogą być użyteczne dla inwestorów i analityków finansowych.
+
+# Regresja liniowa
+
+Model regresji liniowej został dopasowany do danych cen zamknięcia akcji Starbucks w okresie od 2016 do 2024 roku. Na wykresie czerwone linie przedstawiają linię regresji, która reprezentuje trend cen zamknięcia akcji w analizowanym okresie.
+
+```{r}
+# Regresja liniowa
+regression_model <- lm(SBUX.Close ~ Date, data = stock.data.df)
+summary(regression_model)
+
+# Wizualizacja regresji liniowej
+ggplot(stock.data.df, aes(x = Date, y = SBUX.Close)) +
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", col = "red", se = FALSE) +
+  labs(title = "Regresja liniowa dla ceny zamknięcia akcji Starbucks",
+       x = "Data",
+       y = "Cena zamknięcia") +
+  theme_minimal()
+```
+
+Model regresji liniowej wskazuje na ogólny trend wzrostowy cen akcji Starbucks. Mimo że dane wykazują znaczną zmienność i występują liczne wahania w krótkich okresach, długoterminowy trend jest wyraźnie wzrostowy. Linia regresji pokazuje, że na przestrzeni analizowanych lat ceny akcji Starbucks mają tendencję do wzrostu.
+
+Model regresji liniowej wskazuje na długoterminowy trend wzrostowy cen akcji Starbucks. Pomimo licznych wahań i spadków w krótkich okresach, ogólny kierunek zmian cen jest pozytywny.
+Dane wykazują znaczną zmienność z licznymi okresami wzrostów i spadków. Te wahania mogą być wynikiem różnych czynników rynkowych, operacyjnych i makroekonomicznych.
+Model regresji liniowej jest prostym narzędziem analizy trendów i może być użyteczny dla inwestorów i analityków do zrozumienia ogólnego kierunku zmian cen akcji. Jednakże, ze względu na swoją prostotę, model ten nie uwzględnia sezonowości ani specyficznych zdarzeń, które mogą wpływać na krótkoterminowe zmiany cen.
+
+Model regresji liniowej dostarcza prostego, ale użytecznego spojrzenia na długoterminowy trend cen akcji Starbucks, pokazując ogólny wzrost w analizowanym okresie. Mimo że model nie uwzględnia zmienności i krótkoterminowych wahań, jest cennym narzędziem do identyfikacji ogólnych kierunków zmian cen, które mogą być użyteczne w podejmowaniu decyzji inwestycyjnych.
