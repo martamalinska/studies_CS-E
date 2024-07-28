@@ -12,13 +12,6 @@ Projekt ma na celu przeprowadzenie analizy zwrotów kapitałowych z akcji spół
 
 ...
 
-Autorzy:
-
-- Marta Malińska
-- Nina Nowocień
-- Hubert Krajewski
-- Hubert Skierski
-
 ## Załadaowanie bibliotek
 
 ```{r}
